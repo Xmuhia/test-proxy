@@ -47,12 +47,27 @@ const downloadAsset = async (assetUrl, baseUrl) => {
   return filePath;
 };
 
-// Rewrite asset URLs in the HTML content
-const rewriteUrlsInContent = (content, baseUrl) => {
-  return content.replace(/(["' ])(\/[^"'>]+)/g, (match, quote, relativeUrl) => {
-    // Convert relative URLs to the local server path (e.g., replace with local paths)
-    return `${quote}${baseUrl}${relativeUrl}`;
+// Comprehensive URL rewriting for all URL types
+const rewriteUrlsInContent = (content, targetUrl, proxyUrl) => {
+  const parsedTarget = new URL(targetUrl);
+  const targetOrigin = `${parsedTarget.protocol}//${parsedTarget.host}`;
+  
+  // Handle absolute URLs (http://example.com/path)
+  content = content.replace(/(["'\s])(https?:\/\/[^"'\s]+)/gi, (match, quote, url) => {
+    return `${quote}${proxyUrl}?url=${encodeURIComponent(url)}`;
   });
+  
+  // Handle protocol-relative URLs (//example.com/path)
+  content = content.replace(/(["'\s])(\/\/[^"'\s]+)/gi, (match, quote, url) => {
+    return `${quote}${proxyUrl}?url=${encodeURIComponent(`${parsedTarget.protocol}${url}`)}`;
+  });
+  
+  // Handle root-relative URLs (/path)
+  content = content.replace(/(["'\s])(\/[^"'\s>]+)/gi, (match, quote, path) => {
+    return `${quote}${proxyUrl}?url=${encodeURIComponent(`${targetOrigin}${path}`)}`;
+  });
+  
+  return content;
 };
 
 const handler = async (ctx) => {
