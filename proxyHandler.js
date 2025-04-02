@@ -324,10 +324,10 @@ processedContent = processedContent.replace('</head>', `${proxyScript}</head>`);
     processedContent = content;
   }
 }
-
+    // Set content type and send response
+    ctx.type = contentType;
+    ctx.body = processedContent;
     await page.close();
-    ctx.body = content;
-    ctx.status = 200;
   } catch (error) {
     console.error('❌ Error fetching page:', error);
     ctx.status = 500;
@@ -335,6 +335,66 @@ processedContent = processedContent.replace('</head>', `${proxyScript}</head>`);
   }
 };
 
+// In-memory asset cache
+const assetCache = new Map();
+const CACHE_TTL = 3600000; // 1 hour in milliseconds
+
+// Asset handling function
+const handleAsset = async (ctx) => {
+  const assetUrl = ctx.query.url;
+  if (!assetUrl || !validateUrl(assetUrl)) {
+    ctx.status = 400;
+    ctx.body = { error: 'Invalid asset URL' };
+    return;
+  }
+  
+  try {
+    // Check cache first
+    const now = Date.now();
+    if (assetCache.has(assetUrl)) {
+      const cachedAsset = assetCache.get(assetUrl);
+      if (now - cachedAsset.timestamp < CACHE_TTL) {
+        ctx.type = cachedAsset.contentType;
+        ctx.body = cachedAsset.data;
+        return;
+      }
+      // Cache expired, remove it
+      assetCache.delete(assetUrl);
+    }
+    
+    // Fetch the asset with axios
+    const response = await axios.get(assetUrl, {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': new URL(assetUrl).origin
+      },
+      maxRedirects: 5,
+      timeout: 10000
+    });
+    
+    // Cache the asset
+    assetCache.set(assetUrl, {
+      data: response.data,
+      contentType: response.headers['content-type'],
+      timestamp: now
+    });
+    
+    // Serve the asset
+    if (response.headers['content-type']) {
+      ctx.type = response.headers['content-type'];
+    }
+    ctx.body = response.data;
+  } catch (error) {
+    console.error(`Asset fetch error for ${assetUrl}:`, error.message);
+    ctx.status = 502;
+    ctx.body = { error: 'Failed to fetch asset', details: error.message };
+  }
+};
+
 module.exports.register = (router) => {
   router.get('/', cors(), handler);
+  router.get('/asset', cors(), handleAsset);
 };
