@@ -84,8 +84,10 @@ const handler = async (ctx) => {
     return;
   }
 
-  const targetUrlObj = new URL(targetUrl);
-  const baseUrl = `${targetUrlObj.protocol}//${targetUrlObj.host}`;
+// Build the proxy base URL dynamically
+const protocol = ctx.request.secure ? 'https' : 'http';
+const host = ctx.request.host;
+const proxyBaseUrl = `${protocol}://${host}`;
 
   try {
     // ✅ Fix CORS issues
