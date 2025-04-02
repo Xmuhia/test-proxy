@@ -180,19 +180,15 @@ const proxyBaseUrl = `${protocol}://${host}`;
 
     securityHeaders.forEach(header => ctx.set(header, ''));
 
-    // Start the browser and fetch page content
-    const browser = await startBrowser();
-    const page = await browser.newPage();
-
-    await page.setExtraHTTPHeaders({
-      'Accept-Encoding': 'gzip, deflate, br',
-      'User-Agent':
-        ctx.get('User-Agent') ||
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      Referer: baseUrl,
-      Accept: '*/*',
-      Origin: baseUrl,
+    // Fetch the page with retry mechanism
+    const page = await fetchPageWithRetry(targetUrl);
+    
+    // Wait for page to be fully loaded
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+      console.log('Timeout waiting for network idle, continuing anyway');
     });
+
+    
 
     // ✅ Download the page content
     await page.goto(targetUrl, { waitUntil: 'load', timeout: 30000 });
