@@ -188,11 +188,23 @@ const proxyBaseUrl = `${protocol}://${host}`;
       console.log('Timeout waiting for network idle, continuing anyway');
     });
 
-    
+    // Check content type from response
+    const response = page.mainFrame().url() === targetUrl
+    ? await page.mainFrame().response()
+    : null;
 
-    // ✅ Download the page content
-    await page.goto(targetUrl, { waitUntil: 'load', timeout: 30000 });
-    await page.waitForSelector('body', { timeout: 10000 });
+    // Handle redirects
+    const finalUrl = page.url();
+    if (finalUrl !== targetUrl) {
+    console.log(`Redirected from ${targetUrl} to ${finalUrl}`);
+    }
+
+    // Get content type
+    let contentType = 'text/html';
+    if (response) {
+    const headers = response.headers();
+    contentType = headers['content-type'] || 'text/html';
+    }
 
     // Get the HTML content
     let content = await page.content();
