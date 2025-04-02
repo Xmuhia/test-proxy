@@ -277,6 +277,42 @@ if (/^image|^audio|^video|^application\/pdf/i.test(contentType)) {
       const baseTag = `<base href="${proxyBaseUrl}/?url=${encodeURIComponent(finalUrl)}">`;
       processedContent = processedContent.replace('<head>', `<head>${baseTag}`);
     }
+
+      // Proxy script to handle dynamic content
+  const proxyScript = `
+  <script>
+    // Intercept fetch and XMLHttpRequest to route through proxy
+    (function() {
+      // Save original fetch
+      const originalFetch = window.fetch;
+      window.fetch = function(url, options) {
+        try {
+          const absoluteUrl = new URL(url, window.location.href).href;
+          const proxiedUrl = '${proxyBaseUrl}/?url=' + encodeURIComponent(absoluteUrl);
+          return originalFetch(proxiedUrl, options);
+        } catch (e) {
+          return originalFetch(url, options);
+        }
+      };
+      
+      // Save original XMLHttpRequest open
+      const originalXhrOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+        try {
+          const absoluteUrl = new URL(url, window.location.href).href;
+          const proxiedUrl = '${proxyBaseUrl}/?url=' + encodeURIComponent(absoluteUrl);
+          return originalXhrOpen.call(this, method, proxiedUrl, ...rest);
+        } catch (e) {
+          return originalXhrOpen.call(this, method, url, ...rest);
+        }
+      };
+      
+      console.log('Proxy script initialized');
+    })();
+  </script>
+`;
+processedContent = processedContent.replace('</head>', `${proxyScript}</head>`);
+    
   } else if (/css/i.test(contentType)) {
     // CSS content
     processedContent = rewriteCssUrls(content, finalUrl, `${proxyBaseUrl}/asset`);
