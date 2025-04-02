@@ -7,6 +7,16 @@ const axios = require('axios');
 const os = require('os');
 const logger = require('koa-morgan'); // Koa-compatible morgan logger
 
+// User agent rotation for better Cloudflare bypass
+const userAgents = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+];
+
+const getRandomUserAgent = () => userAgents[Math.floor(Math.random() * userAgents.length)];
+
 const validateUrl = (url) => {
   try {
     const parsedUrl = new URL(url);
@@ -31,6 +41,30 @@ const startBrowser = async () => {
     });
   }
   return browser;
+};
+
+// Cookie management system
+const cookieJars = new Map(); // Store cookies per domain
+
+const saveCookies = async (page, url) => {
+  const parsedUrl = new URL(url);
+  const domain = parsedUrl.hostname;
+  const cookies = await page.context().cookies();
+  cookieJars.set(domain, cookies);
+  return cookies;
+};
+
+const applyCookies = async (page, url) => {
+  const parsedUrl = new URL(url);
+  const domain = parsedUrl.hostname;
+  const cookies = cookieJars.get(domain) || [];
+  
+  if (cookies.length > 0) {
+    await page.context().addCookies(cookies);
+    console.log(`Applied ${cookies.length} cookies for ${domain}`);
+  }
+  
+  return page;
 };
 
 // Utility function to download assets (JS, CSS, Images)
@@ -331,7 +365,12 @@ processedContent = processedContent.replace('</head>', `${proxyScript}</head>`);
   } catch (error) {
     console.error('❌ Error fetching page:', error);
     ctx.status = 500;
-    ctx.body = { status: 'error', message: 'Failed to load page through proxy', details: error.message };
+    ctx.body = { 
+      status: 'error', 
+      message: 'Failed to load page through proxy', 
+      details: error.message,
+      url: targetUrl
+    };
   }
 };
 
@@ -366,7 +405,7 @@ const handleAsset = async (ctx) => {
     const response = await axios.get(assetUrl, {
       responseType: 'arraybuffer',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': getRandomUserAgent(),
         'Accept': '*/*',
         'Accept-Encoding': 'gzip, deflate, br',
         'Referer': new URL(assetUrl).origin
