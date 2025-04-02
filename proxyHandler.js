@@ -273,6 +273,10 @@ if (/^image|^audio|^video|^application\/pdf/i.test(contentType)) {
   if (/html/i.test(contentType)) {
     // HTML - rewrite all URLs
     processedContent = rewriteUrlsInContent(content, finalUrl, `${proxyBaseUrl}/`);
+    if (!processedContent.includes('<base')) {
+      const baseTag = `<base href="${proxyBaseUrl}/?url=${encodeURIComponent(finalUrl)}">`;
+      processedContent = processedContent.replace('<head>', `<head>${baseTag}`);
+    }
   } else if (/css/i.test(contentType)) {
     // CSS content
     processedContent = rewriteCssUrls(content, finalUrl, `${proxyBaseUrl}/asset`);
