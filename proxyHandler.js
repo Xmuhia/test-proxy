@@ -70,6 +70,56 @@ const rewriteUrlsInContent = (content, targetUrl, proxyUrl) => {
   return content;
 };
 
+// CSS-specific URL rewriting
+const rewriteCssUrls = (cssContent, targetUrl, proxyBaseUrl) => {
+  const parsedTarget = new URL(targetUrl);
+  const targetOrigin = `${parsedTarget.protocol}//${parsedTarget.host}`;
+  
+  // Match url() patterns in CSS
+  return cssContent.replace(/url\(['"]?([^'")]+)['"]?\)/gi, (match, url) => {
+    // Skip data URLs
+    if (url.startsWith('data:')) return match;
+    
+    // Handle different URL types
+    let absoluteUrl;
+    if (url.startsWith('http')) {
+      // Absolute URL
+      absoluteUrl = url;
+    } else if (url.startsWith('//')) {
+      // Protocol-relative URL
+      absoluteUrl = `${parsedTarget.protocol}${url}`;
+    } else if (url.startsWith('/')) {
+      // Root-relative URL
+      absoluteUrl = `${targetOrigin}${url}`;
+    } else {
+      // Path-relative URL - resolve against target URL
+      const baseDir = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
+      absoluteUrl = new URL(url, baseDir).href;
+    }
+    
+    return `url("${proxyBaseUrl}?url=${encodeURIComponent(absoluteUrl)}")`;
+  });
+};
+
+// JavaScript-specific URL rewriting
+const rewriteJsUrls = (jsContent, targetUrl, proxyBaseUrl) => {
+  // Basic string replacement for common URL patterns in JavaScript
+  const parsedTarget = new URL(targetUrl);
+  const targetOrigin = `${parsedTarget.protocol}//${parsedTarget.host}`;
+  
+  // Replace URL strings in JS 
+  jsContent = jsContent.replace(/(["'])(https?:\/\/[^"']+)(["'])/g, (match, quote1, url, quote2) => {
+    return `${quote1}${proxyBaseUrl}?url=${encodeURIComponent(url)}${quote2}`;
+  });
+  
+  // Handle protocol-relative URLs
+  jsContent = jsContent.replace(/(["'])(\/\/[^"']+)(["'])/g, (match, quote1, url, quote2) => {
+    return `${quote1}${proxyBaseUrl}?url=${encodeURIComponent(`${parsedTarget.protocol}${url}`)}${quote2}`;
+  });
+  
+  return jsContent;
+};
+
 // Enhanced error handling with retry mechanism
 const fetchPageWithRetry = async (url, maxRetries = 3) => {
   let lastError;
