@@ -70,6 +70,77 @@ const rewriteUrlsInContent = (content, targetUrl, proxyUrl) => {
   return content;
 };
 
+// Enhanced error handling with retry mechanism
+const fetchPageWithRetry = async (url, maxRetries = 3) => {
+  let lastError;
+  let page;
+  const browser = await startBrowser();
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      page = await browser.newPage();
+      console.log(`Attempt ${attempt}/${maxRetries} to fetch ${url}`);
+      
+      // Apply stealth techniques
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'User-Agent': getRandomUserAgent(),
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
+      });
+      
+      // Apply any stored cookies
+      await applyCookies(page, url);
+      
+      // Navigate to the page
+      await page.goto(url, { 
+        waitUntil: 'domcontentloaded', 
+        timeout: 30000 
+      });
+      
+      // Wait for network to become relatively idle
+      await page.waitForLoadState('networkidle', { timeout: 10000 })
+        .catch(() => console.log('Timeout waiting for networkidle, continuing anyway'));
+      
+      // Check if we hit a Cloudflare challenge
+      const content = await page.content();
+      if (content.includes('cf-browser-verification') || content.includes('cf_chl_prog')) {
+        console.log('Cloudflare challenge detected, waiting for resolution...');
+        // Wait for challenge to resolve
+        await page.waitForTimeout(5000);
+        await page.waitForLoadState('networkidle', { timeout: 15000 })
+          .catch(() => console.log('Timeout waiting for challenge resolution, continuing anyway'));
+      }
+      
+      // Save cookies for future requests
+      await saveCookies(page, url);
+      
+      return page;
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error.message);
+      lastError = error;
+      
+      if (page) {
+        await page.close().catch(() => {});
+      }
+      
+      // Wait before retrying (exponential backoff)
+      if (attempt < maxRetries) {
+        const delay = 1000 * Math.pow(2, attempt - 1);
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw new Error(`Failed to fetch page after ${maxRetries} attempts: ${lastError.message}`);
+};
+
 const handler = async (ctx) => {
   if (ctx.method !== 'GET') {
     ctx.status = 405;
