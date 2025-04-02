@@ -256,26 +256,34 @@ const proxyBaseUrl = `${protocol}://${host}`;
     contentType = headers['content-type'] || 'text/html';
     }
 
-    // Get the HTML content
-    let content = await page.content();
+    // Get content based on content type
+let content;
+let processedContent;
 
-    // ✅ Rewrite URLs for assets
-    content = await rewriteUrlsInContent(content, baseUrl);
-
-    // Download assets (e.g., JS, CSS, images)
-    const assetUrls = [
-      ...new Set([...content.matchAll(/(["' ])(\/[^"'>]+)/g)].map(match => match[2]))
-    ];
-
-    const downloadedAssets = [];
-
-    for (let assetUrl of assetUrls) {
-      const localPath = await downloadAsset(assetUrl, baseUrl);
-      downloadedAssets.push({ assetUrl, localPath });
-    }
-
-    // Serve the content with asset links updated
-    content = await rewriteUrlsInContent(content, '/assets/'); // Rewriting the base URL to local '/assets/'
+if (/^image|^audio|^video|^application\/pdf/i.test(contentType)) {
+  // Binary content - serve directly via asset handler
+  ctx.redirect(`${proxyBaseUrl}/asset?url=${encodeURIComponent(finalUrl)}`);
+  await page.close();
+  return;
+} else {
+  // Text content - get and process
+  content = await page.content();
+  
+  // Process content based on type
+  if (/html/i.test(contentType)) {
+    // HTML - rewrite all URLs
+    processedContent = rewriteUrlsInContent(content, finalUrl, `${proxyBaseUrl}/`);
+  } else if (/css/i.test(contentType)) {
+    // CSS content
+    processedContent = rewriteCssUrls(content, finalUrl, `${proxyBaseUrl}/asset`);
+  } else if (/javascript/i.test(contentType)) {
+    // JavaScript content
+    processedContent = rewriteJsUrls(content, finalUrl, `${proxyBaseUrl}/asset`);
+  } else {
+    // Other text content
+    processedContent = content;
+  }
+}
 
     await page.close();
     ctx.body = content;
